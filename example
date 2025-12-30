@@ -1,0 +1,20 @@
+pipeline {
+  agent any
+    stages {
+      
+    stage('say hello world') {
+      steps {
+            sh 'echo hello world'
+        }
+    }
+      
+      
+     stage('exec basic command') {
+      steps {
+            sh 'pwd && whoami'
+        }
+    }
+  
+    
+  }
+}
