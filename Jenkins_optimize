@@ -1,0 +1,110 @@
+pipeline {
+    agent { label 'ansible-master' }
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+        disableConcurrentBuilds()
+        skipDefaultCheckout(false)
+    }
+
+    environment {
+        // ===== 基本設定 =====
+        IMAGE_NAME = "frontend"
+        IMAGE_TAG  = "staging"
+        REPO_NAME  = "602708357953.dkr.ecr.ap-northeast-1.amazonaws.com"
+
+        // ===== Target Host =====
+        TARGET_USER    = "ubuntu"
+        TARGET_HOST_IP = "oci_public_ip"
+
+        // ===== Build Vars =====
+        CURRENT_DATE = "${new Date().format('yyyyMMdd')}"
+        DOCKER_IMAGE = "${REPO_NAME}/${IMAGE_NAME}:${IMAGE_TAG}-${CURRENT_DATE}-${BUILD_NUMBER}"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                  set -e
+                  echo "Building image: ${DOCKER_IMAGE}"
+                  docker build -t ${DOCKER_IMAGE} .
+                '''
+            }
+        }
+
+        stage('Login ECR (Jenkins)') {
+            steps {
+                withAWS(credentials: 'ecr-user', region: 'ap-northeast-1') {
+                    sh '''
+                      set -e
+                      aws ecr get-login-password \
+                      | docker login \
+                        --username AWS \
+                        --password-stdin ${REPO_NAME}
+                    '''
+                }
+            }
+        }
+
+        stage('Push Image to ECR') {
+            steps {
+                sh '''
+                  set -e
+                  docker push ${DOCKER_IMAGE}
+                '''
+            }
+        }
+
+        stage('Prepare Target Host (AWS CLI / Docker)') {
+            steps {
+                dir('ansible') {
+                    ansiblePlaybook(
+                        installation: 'ansible',
+                        inventory: 'inventory',
+                        playbook: 'aws-cli-ubuntu.yaml',
+                        become: true
+                    )
+                }
+            }
+        }
+
+        stage('Deploy by Ansible') {
+            steps {
+                dir('ansible') {
+                    ansiblePlaybook(
+                        installation: 'ansible',
+                        inventory: 'inventory',
+                        playbook: 'docker-deploy.yaml',
+                        become: true,
+                        extraVars: [
+                            docker_image: env.DOCKER_IMAGE
+                        ]
+                    )
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Deploy success: ${DOCKER_IMAGE}"
+        }
+        failure {
+            echo "❌ Pipeline failed"
+        }
+        always {
+            sh '''
+              docker image prune -f || true
+            '''
+        }
+    }
+}
