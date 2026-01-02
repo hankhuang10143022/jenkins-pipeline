@@ -1,0 +1,112 @@
+pipeline {
+  agent { label 'ansible-controller' }
+  stages {
+      
+    stage('test gitlab') {
+      steps {
+        git branch: 'main', 
+        credentialsId: 'gitlab', 
+        url: 'http://192.168.5.74/root/demo.git'
+      }
+    }
+    
+    stage('check file') {
+      steps {
+          
+          sh 'pwd'
+          sh 'ls -alt'
+        
+      }
+    }
+    
+    stage("build image") {
+          steps {
+              script {
+                     env.IMAGE_NAME = "demo"  //image名稱
+                     env.IMAGE_TAG =  "main"   // branch or tag
+                     env.REPO_NAME  = " 602708357953.dkr.ecr.ap-northeast-1.amazonaws.com" //repostory的fqdn
+                     env.CURRENT_DATE = "${new Date().format('yyyyMMdd')}"
+                     //image格式:  repoURL/image名稱:分支-當天日期-pipeline編號 並做一個新變數 ${DOCKER_IMAGE}
+                     env.DOCKER_IMAGE = "${REPO_NAME}/${IMAGE_NAME}:${IMAGE_TAG}-${CURRENT_DATE}-${BUILD_NUMBER}"
+              }
+                  sh '''
+                     echo "Build image: ${DOCKER_IMAGE}"
+                     
+                     docker build -t ${DOCKER_IMAGE} .
+                     '''                     
+              }
+          }
+    
+    
+       stage("write .env") {   //,env環境變數為替換docker-compose.yaml的image使用
+            steps {
+                     sh 'echo DOCKER_IMAGE=${DOCKER_IMAGE} > .env'
+                        
+                     sh 'ls -alt && cat .env'
+                        
+                  }
+            }
+            
+        stage("login ECR") {  //ansible 主機需登入ECR 
+          steps {
+                  withAWS(credentials: 'ecr-permit', region: 'ap-northeast-1') {
+                  sh '''
+                      aws ecr get-login-password | docker login --username AWS --password-stdin ${REPO_NAME}
+                     ''' 
+                  }
+              }
+          }
+          
+          stage("push image") {  //為了將images 推至ECR
+              steps{
+                  //將image推到ECR
+                  sh 'docker push ${DOCKER_IMAGE}'
+                   
+                  //清理image
+                  sh'docker rmi ${DOCKER_IMAGE}'
+              }
+          }
+          
+          stage('check aws cli in target host') {
+             steps {
+                 ansiblePlaybook become: true, 
+                 disableHostKeyChecking: true, 
+                 installation: 'ansible',
+                 inventory: 'ansible/inventory',
+                 playbook: 'ansible/aws-cli-ubuntu.yaml'
+             }
+        }
+        
+        
+          stage('target host login ECR') {
+            steps {
+               withAWS(credentials: 'ecr-permit', region: 'ap-northeast-1') {
+                   sshagent(['192.168.5.14']) {
+                     sh '''
+                        # 在 Jenkins agent 取得 ECR token
+                        TOKEN=$(aws ecr get-login-password --region ap-northeast-1)
+                        
+                        # 將 token 傳給 targeted host 做 docker login
+                        ssh  ubuntu@192.168.5.14  -o StrictHostKeyChecking=no "
+                        echo '$TOKEN' | docker login --username AWS --password-stdin ${REPO_NAME}
+                        "
+                        '''
+                   }
+               }
+            }
+         }
+         
+         stage('depolying') {
+           steps {
+               ansiblePlaybook become: true, 
+               disableHostKeyChecking: true, 
+               installation: 'ansible',
+               inventory: 'ansible/inventory',
+               playbook: 'ansible/docker-deploy.yaml'
+           }
+             
+         }
+    
+    
+  }
+}
