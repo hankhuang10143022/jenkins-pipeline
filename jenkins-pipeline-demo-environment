@@ -1,11 +1,12 @@
 pipeline {
   agent { label 'ansible-controller' }
-
-    environment {                               //此pipeline為有設環境變數的版本(還未接webhook版本)
+  
+    environment {  //此pipeline為有設環境變數的版本(還未接webhook版本)
         // ===== 基本設定 =====
         IMAGE_NAME = "frontend"   //自己取的image名稱，會用為image命名標記用
         IMAGE_TAG  = "main"    //這邊會用gitlab的branch或tag，方便為image命名標記用
         REPO_NAME  = "602708357953.dkr.ecr.ap-northeast-1.amazonaws.com"  //docker registry 我們是用AWS的ECR
+        GITLAB_URL = "http://192.168.5.74/root/demo.git" //Gitlab專案url
       
         // ===== Target Host =====
         TARGET_USER    = "ubuntu"  //Target Host的使用者
@@ -18,7 +19,7 @@ pipeline {
          //為image命名目的為上傳至docker registry，格式:ECR-URL/image名稱:專案所在分支或tag(Gitlab)-日期-pipeline編號
          DOCKER_IMAGE = "${REPO_NAME}/${IMAGE_NAME}:${IMAGE_TAG}-${CURRENT_DATE}-${BUILD_NUMBER}"
       
-     }
+    }
   
   
   stages {
@@ -27,7 +28,7 @@ pipeline {
       steps {
         git branch: "${IMAGE_TAG}", 
         credentialsId: 'gitlab', 
-        url: 'http://192.168.5.74/root/demo.git'
+        url: "${GITLAB_URL}"
       }
     }
     
