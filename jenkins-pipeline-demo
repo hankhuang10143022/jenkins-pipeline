@@ -1,5 +1,5 @@
 pipeline {
-  agent { label 'ansible-controller' }     #此pipeline 還沒設environment變數
+  agent { label 'ansible-controller' }     //此pipeline 還沒設environment變數
   stages {
       
     stage('test gitlab') {
