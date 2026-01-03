@@ -1,5 +1,6 @@
 pipeline {
   agent { label 'ansible-controller' }
+
     environment {
         // ===== 基本設定 =====
         IMAGE_NAME = "frontend"   //自己取的image名稱，會用為image命名標記用
@@ -17,7 +18,7 @@ pipeline {
          //為image命名目的為上傳至docker registry，格式:ECR-URL/image名稱:專案所在分支或tag(Gitlab)-日期-pipeline編號
          DOCKER_IMAGE = "${REPO_NAME}/${IMAGE_NAME}:${IMAGE_TAG}-${CURRENT_DATE}-${BUILD_NUMBER}"
       
-  }
+     }
   
   
   stages {
