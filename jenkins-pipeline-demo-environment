@@ -1,7 +1,7 @@
 pipeline {
   agent { label 'ansible-controller' }
 
-    environment {
+    environment {                               //此pipeline為有設環境變數的版本(還未接webhook版本)
         // ===== 基本設定 =====
         IMAGE_NAME = "frontend"   //自己取的image名稱，會用為image命名標記用
         IMAGE_TAG  = "main"    //這邊會用gitlab的branch或tag，方便為image命名標記用
